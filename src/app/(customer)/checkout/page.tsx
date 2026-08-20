@@ -10,23 +10,41 @@ import {
   Truck,
   Store,
   Calendar,
-  AlertTriangle,
   QrCode,
   CheckCircle,
   Loader2,
+  Package,
 } from 'lucide-react'
 import { formatIDR, calculateDeliveryFee, generateOrderNumber, getCancelDeadline } from '@/lib/utils'
 import { useAuth } from '@/context/auth-context'
 import { supabase } from '@/lib/supabase'
 import { MenuItem } from '@/types'
 
-interface ComboData {
+interface MainCourseCombo {
+  type: 'maincourse'
   rice: MenuItem
   proteins: MenuItem[]
   addons: MenuItem[]
   quantity: number
   comboPrice: number
   subtotal: number
+}
+
+interface DessertCombo {
+  type: 'dessert'
+  dessert: MenuItem
+  quantity: number
+  comboPrice: number
+  subtotal: number
+}
+
+type ComboData = MainCourseCombo | DessertCombo
+
+interface PackagingOption {
+  id: string
+  name: string
+  description: string
+  price: number
 }
 
 const timeSlots = [
@@ -49,6 +67,8 @@ export default function CheckoutPage() {
   const [orderPlaced, setOrderPlaced] = useState(false)
   const [orderNumber, setOrderNumber] = useState('')
   const [loading, setLoading] = useState(false)
+  const [packagingOptions, setPackagingOptions] = useState<PackagingOption[]>([])
+  const [selectedPackaging, setSelectedPackaging] = useState<PackagingOption | null>(null)
 
   useEffect(() => {
     if (!user) {
@@ -56,7 +76,6 @@ export default function CheckoutPage() {
       return
     }
 
-    // Load combo from localStorage
     const stored = localStorage.getItem('dapurpos_combo')
     if (stored) {
       try {
@@ -67,7 +86,23 @@ export default function CheckoutPage() {
     } else {
       router.push('/menu')
     }
+
+    fetchPackaging()
   }, [user])
+
+  async function fetchPackaging() {
+    try {
+      const { data } = await supabase
+        .from('packaging_options')
+        .select('*')
+        .eq('is_active', true)
+        .order('name')
+
+      if (data) setPackagingOptions(data)
+    } catch (err) {
+      console.error('Error:', err)
+    }
+  }
 
   if (!combo || !user) {
     return (
@@ -78,8 +113,9 @@ export default function CheckoutPage() {
   }
 
   const comboData = combo
+  const packagingFee = selectedPackaging ? selectedPackaging.price * comboData.quantity : 0
   const deliveryFee = deliveryType === 'delivery' ? calculateDeliveryFee(distance).total_fee : 0
-  const grandTotal = comboData.subtotal + deliveryFee
+  const grandTotal = comboData.subtotal + packagingFee + deliveryFee
   const dpAmount = grandTotal * 0.5
 
   function getMinDate() {
@@ -104,6 +140,10 @@ export default function CheckoutPage() {
       alert('Waktu pengiriman harus dipilih')
       return
     }
+    if (!selectedPackaging) {
+      alert('Pilih kemasan terlebih dahulu')
+      return
+    }
 
     setShowQRIS(true)
   }
@@ -115,71 +155,99 @@ export default function CheckoutPage() {
       const newOrderNumber = generateOrderNumber()
       const cancelDeadline = getCancelDeadline(selectedDate, comboData.quantity)
 
-      // Create order
-      const { data: order, error: orderError } = await supabase
-        .from('orders')
-        .insert({
-          user_id: user!.id,
-          order_number: newOrderNumber,
+      let orderData: any = {
+        user_id: user!.id,
+        order_number: newOrderNumber,
+        pack_qty: comboData.quantity,
+        delivery_type: deliveryType,
+        delivery_address: deliveryType === 'delivery' ? address : null,
+        delivery_distance_km: deliveryType === 'delivery' ? distance : null,
+        delivery_fee: deliveryFee,
+        packaging_type: selectedPackaging?.name,
+        packaging_fee: packagingFee,
+        time_slot: selectedSlot,
+        delivery_date: selectedDate,
+        grand_total: grandTotal,
+        dp_amount: dpAmount,
+        remaining_amount: grandTotal - dpAmount,
+        status: 'awaiting_dp',
+        cancel_deadline: cancelDeadline.toISOString().split('T')[0],
+        notes: notes || null,
+      }
+
+      if (comboData.type === 'maincourse') {
+        orderData = {
+          ...orderData,
+          order_type: 'maincourse',
           rice_id: comboData.rice.id,
           rice_name: comboData.rice.name,
           rice_price: comboData.rice.price,
           combo_price: comboData.comboPrice,
-          pack_qty: comboData.quantity,
           subtotal: comboData.subtotal,
-          delivery_type: deliveryType,
-          delivery_address: deliveryType === 'delivery' ? address : null,
-          delivery_distance_km: deliveryType === 'delivery' ? distance : null,
-          delivery_fee: deliveryFee,
-          time_slot: selectedSlot,
-          delivery_date: selectedDate,
-          grand_total: grandTotal,
-          dp_amount: dpAmount,
-          remaining_amount: grandTotal - dpAmount,
-          status: 'awaiting_dp',
-          cancel_deadline: cancelDeadline.toISOString().split('T')[0],
-          notes: notes || null,
-        })
+        }
+      } else {
+        orderData = {
+          ...orderData,
+          order_type: 'dessert',
+          rice_id: null,
+          rice_name: comboData.dessert.name,
+          rice_price: comboData.dessert.price,
+          combo_price: comboData.dessert.price,
+          subtotal: comboData.subtotal,
+        }
+      }
+
+      const { data: order, error: orderError } = await supabase
+        .from('orders')
+        .insert(orderData)
         .select()
         .single()
 
       if (orderError) throw orderError
 
       // Create order items
-      const orderItems = [
-        ...comboData.proteins.map((p) => ({
+      const orderItems: any[] = []
+
+      if (comboData.type === 'maincourse') {
+        comboData.proteins.forEach(p => {
+          orderItems.push({
+            order_id: order.id,
+            item_type: 'protein',
+            item_id: p.id,
+            item_name: p.name,
+            price: p.price,
+          })
+        })
+        comboData.addons.forEach(a => {
+          orderItems.push({
+            order_id: order.id,
+            item_type: 'addon',
+            item_id: a.id,
+            item_name: a.name,
+            price: a.price,
+          })
+        })
+      } else {
+        orderItems.push({
           order_id: order.id,
-          item_type: 'protein',
-          item_id: p.id,
-          item_name: p.name,
-          price: p.price,
-        })),
-        ...comboData.addons.map((a) => ({
-          order_id: order.id,
-          item_type: 'addon',
-          item_id: a.id,
-          item_name: a.name,
-          price: a.price,
-        })),
-      ]
+          item_type: 'dessert',
+          item_id: comboData.dessert.id,
+          item_name: comboData.dessert.name,
+          price: comboData.dessert.price,
+        })
+      }
 
       if (orderItems.length > 0) {
-        const { error: itemsError } = await supabase
-          .from('order_items')
-          .insert(orderItems)
-
-        if (itemsError) throw itemsError
+        await supabase.from('order_items').insert(orderItems)
       }
 
       // Create payment record
-      await supabase
-        .from('payments')
-        .insert({
-          order_id: order.id,
-          payment_type: 'dp',
-          amount: dpAmount,
-          method: 'qris',
-        })
+      await supabase.from('payments').insert({
+        order_id: order.id,
+        payment_type: 'dp',
+        amount: dpAmount,
+        method: 'qris',
+      })
 
       setOrderNumber(newOrderNumber)
       setOrderPlaced(true)
@@ -199,9 +267,7 @@ export default function CheckoutPage() {
             <CheckCircle className="h-10 w-10 text-success" />
           </div>
           <h1 className="font-heading text-2xl font-bold mb-2">Pesanan Berhasil!</h1>
-          <p className="text-muted-foreground mb-6">
-            Pesanan Anda telah diterima. Silakan bayar DP untuk konfirmasi.
-          </p>
+          <p className="text-muted-foreground mb-6">Pesanan Anda telah diterima.</p>
           <div className="rounded-lg bg-muted p-4 mb-6 text-left">
             <div className="space-y-2">
               <div className="flex justify-between">
@@ -213,18 +279,14 @@ export default function CheckoutPage() {
                 <span className="font-medium">{formatIDR(grandTotal)}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-muted-foreground">DP yang harus dibayar</span>
+                <span className="text-muted-foreground">DP</span>
                 <span className="font-medium text-primary">{formatIDR(dpAmount)}</span>
               </div>
             </div>
           </div>
           <div className="flex gap-3">
-            <Button variant="outline" className="flex-1" onClick={() => router.push('/orders')}>
-              Lihat Pesanan
-            </Button>
-            <Button className="flex-1" onClick={() => router.push('/menu')}>
-              Pesan Lagi
-            </Button>
+            <Button variant="outline" className="flex-1" onClick={() => router.push('/orders')}>Lihat Pesanan</Button>
+            <Button className="flex-1" onClick={() => router.push('/menu')}>Pesan Lagi</Button>
           </div>
         </div>
       </div>
@@ -258,9 +320,6 @@ export default function CheckoutPage() {
                     className="w-full max-w-xs mx-auto"
                   />
                 </div>
-                <p className="text-sm text-muted-foreground mt-4">
-                  Scan kode QR di atas menggunakan aplikasi banking Anda
-                </p>
               </div>
 
               <div className="rounded-lg bg-info/10 border border-info/20 p-4 text-sm">
@@ -269,24 +328,13 @@ export default function CheckoutPage() {
                   <li>Scan kode QRIS di atas</li>
                   <li>Bayar sesuai nominal yang tertera</li>
                   <li>Simpan bukti pembayaran</li>
-                  <li>Admin akan mengkonfirmasi pembayaran Anda via WhatsApp</li>
+                  <li>Admin akan mengkonfirmasi via WhatsApp</li>
                 </ol>
               </div>
 
-              <div className="rounded-lg bg-warning/10 border border-warning/20 p-3 text-sm">
-                <p className="text-warning font-medium">Penting!</p>
-                <p className="text-muted-foreground">
-                  Setelah membayar, admin akan memverifikasi pembayaran Anda. Status pesanan akan berubah setelah DP dikonfirmasi.
-                </p>
-              </div>
-
               <div className="flex gap-3">
-                <Button variant="outline" className="flex-1" onClick={() => setShowQRIS(false)}>
-                  Kembali
-                </Button>
-                <Button className="flex-1" onClick={handleConfirmPayment} loading={loading}>
-                  Saya Sudah Bayar
-                </Button>
+                <Button variant="outline" className="flex-1" onClick={() => setShowQRIS(false)}>Kembali</Button>
+                <Button className="flex-1" onClick={handleConfirmPayment} loading={loading}>Saya Sudah Bayar</Button>
               </div>
             </CardContent>
           </Card>
@@ -304,22 +352,31 @@ export default function CheckoutPage() {
           {/* Combo Summary */}
           <Card>
             <CardHeader>
-              <CardTitle>Combo Anda</CardTitle>
+              <CardTitle>{comboData.type === 'maincourse' ? 'Main Course' : 'Dessert'}</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="space-y-2">
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Nasi</span>
-                  <span>{comboData.rice.name} ({formatIDR(comboData.rice.price)})</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Protein</span>
-                  <span>{comboData.proteins.map((p) => p.name).join(', ')}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Lauk</span>
-                  <span>{comboData.addons.length > 0 ? comboData.addons.map((a) => a.name).join(', ') : '-'}</span>
-                </div>
+                {comboData.type === 'maincourse' ? (
+                  <>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Nasi</span>
+                      <span>{comboData.rice.name} ({formatIDR(comboData.rice.price)})</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Protein</span>
+                      <span>{comboData.proteins.map(p => p.name).join(', ')}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Lauk</span>
+                      <span>{comboData.addons.length > 0 ? comboData.addons.map(a => a.name).join(', ') : '-'}</span>
+                    </div>
+                  </>
+                ) : (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Kue</span>
+                    <span>{comboData.dessert.name}</span>
+                  </div>
+                )}
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Harga/pack</span>
                   <span>{formatIDR(comboData.comboPrice)}</span>
@@ -329,10 +386,44 @@ export default function CheckoutPage() {
                   <span>{comboData.quantity} pack</span>
                 </div>
                 <div className="flex justify-between font-bold pt-2 border-t border-border">
-                  <span>Subtotal</span>
+                  <span>Subtotal Menu</span>
                   <span className="text-primary">{formatIDR(comboData.subtotal)}</span>
                 </div>
               </div>
+            </CardContent>
+          </Card>
+
+          {/* Packaging */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Package className="h-5 w-5" />
+                Kemasan
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-3 gap-3">
+                {packagingOptions.map(pkg => (
+                  <button
+                    key={pkg.id}
+                    onClick={() => setSelectedPackaging(pkg)}
+                    className={`flex flex-col items-center gap-2 rounded-lg border-2 p-4 transition-colors ${
+                      selectedPackaging?.id === pkg.id ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50'
+                    }`}
+                  >
+                    <Package className="h-6 w-6" />
+                    <span className="font-medium text-sm">{pkg.name}</span>
+                    <span className="text-xs text-muted-foreground">{formatIDR(pkg.price)}/pack</span>
+                  </button>
+                ))}
+              </div>
+              {selectedPackaging && (
+                <div className="mt-3 rounded-lg bg-muted p-3">
+                  <p className="text-sm">
+                    Biaya kemasan: {formatIDR(selectedPackaging.price)} × {comboData.quantity} pack = {formatIDR(packagingFee)}
+                  </p>
+                </div>
+              )}
             </CardContent>
           </Card>
 
@@ -354,7 +445,6 @@ export default function CheckoutPage() {
                 >
                   <Truck className="h-6 w-6" />
                   <span className="font-medium">Delivery</span>
-                  <span className="text-xs text-muted-foreground">Diantar ke lokasi</span>
                 </button>
                 <button
                   onClick={() => setDeliveryType('pickup')}
@@ -364,7 +454,6 @@ export default function CheckoutPage() {
                 >
                   <Store className="h-6 w-6" />
                   <span className="font-medium">Pickup</span>
-                  <span className="text-xs text-muted-foreground">Ambil sendiri</span>
                 </button>
               </div>
             </CardContent>
@@ -382,21 +471,19 @@ export default function CheckoutPage() {
               <CardContent className="space-y-4">
                 <Input
                   label="Alamat Lengkap"
-                  placeholder="Jl. Contoh No. 123, RT/RW, Kelurahan, Kecamatan"
+                  placeholder="Jl. Contoh No. 123"
                   value={address}
                   onChange={(e) => setAddress(e.target.value)}
                 />
                 <Input
-                  label="Jarak dari Dapur (km)"
+                  label="Jarak (km)"
                   type="number"
                   value={distance}
                   onChange={(e) => setDistance(parseFloat(e.target.value) || 0)}
-                  helperText="Perkiraan jarak untuk hitung ongkir"
                 />
                 {distance > 0 && (
                   <div className="rounded-lg bg-muted p-3">
-                    <p className="text-sm font-medium">Ongkos Kirim</p>
-                    <p className="text-lg font-bold text-primary">{formatIDR(calculateDeliveryFee(distance).total_fee)}</p>
+                    <p className="text-sm font-medium">Ongkos Kirim: {formatIDR(calculateDeliveryFee(distance).total_fee)}</p>
                   </div>
                 )}
               </CardContent>
@@ -420,9 +507,9 @@ export default function CheckoutPage() {
                 min={getMinDate()}
               />
               <div>
-                <label className="block text-sm font-medium mb-2">Waktu Pengiriman</label>
+                <label className="block text-sm font-medium mb-2">Waktu</label>
                 <div className="grid grid-cols-3 gap-3">
-                  {timeSlots.map((slot) => (
+                  {timeSlots.map(slot => (
                     <button
                       key={slot.id}
                       onClick={() => setSelectedSlot(slot.id)}
@@ -447,24 +534,30 @@ export default function CheckoutPage() {
             <CardContent>
               <textarea
                 className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring min-h-[80px]"
-                placeholder="Tambahkan catatan untuk pesanan Anda..."
+                placeholder="Tambahkan catatan..."
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
               />
             </CardContent>
           </Card>
 
-          {/* Order Summary */}
+          {/* Summary */}
           <Card>
             <CardHeader>
-              <CardTitle>Ringkasan Pesanan</CardTitle>
+              <CardTitle>Ringkasan</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="space-y-3">
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Subtotal</span>
+                  <span className="text-muted-foreground">Menu</span>
                   <span>{formatIDR(comboData.subtotal)}</span>
                 </div>
+                {selectedPackaging && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Kemasan ({selectedPackaging.name})</span>
+                    <span>{formatIDR(packagingFee)}</span>
+                  </div>
+                )}
                 {deliveryType === 'delivery' && (
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Ongkir</span>
@@ -479,7 +572,7 @@ export default function CheckoutPage() {
                 </div>
                 <div className="rounded-lg bg-primary/5 p-3">
                   <div className="flex justify-between">
-                    <span className="text-sm">DP yang harus dibayar (50%)</span>
+                    <span className="text-sm">DP (50%)</span>
                     <span className="font-bold text-primary">{formatIDR(dpAmount)}</span>
                   </div>
                 </div>
@@ -487,7 +580,6 @@ export default function CheckoutPage() {
             </CardContent>
           </Card>
 
-          {/* Place Order */}
           <Button className="w-full" size="lg" onClick={handlePlaceOrder}>
             Bayar DP {formatIDR(dpAmount)}
           </Button>

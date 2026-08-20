@@ -227,33 +227,58 @@ export default function OrderDetailPage() {
             </CardHeader>
             <CardContent>
               <div className="space-y-3">
-                <div className="flex items-center justify-between p-3 rounded-lg bg-muted">
-                  <div>
-                    <p className="font-medium">Nasi: {order.rice_name}</p>
-                    <p className="text-sm text-muted-foreground">{order.pack_qty} pack</p>
-                  </div>
-                  <span className="font-medium">{formatIDR(order.rice_price * order.pack_qty)}</span>
-                </div>
-
-                {items.filter((i) => i.item_type === 'protein').map((item) => (
-                  <div key={item.id} className="flex items-center justify-between p-3 rounded-lg bg-muted">
+                {order.order_type === 'dessert' ? (
+                  // Dessert order
+                  <div className="flex items-center justify-between p-3 rounded-lg bg-muted">
                     <div>
-                      <p className="font-medium">Protein: {item.item_name}</p>
+                      <p className="font-medium">{order.rice_name}</p>
                       <p className="text-sm text-muted-foreground">{order.pack_qty} pack</p>
                     </div>
-                    <span className="font-medium">{formatIDR(item.price * order.pack_qty)}</span>
+                    <span className="font-medium">{formatIDR(order.rice_price * order.pack_qty)}</span>
                   </div>
-                ))}
+                ) : (
+                  // Main Course order
+                  <>
+                    <div className="flex items-center justify-between p-3 rounded-lg bg-muted">
+                      <div>
+                        <p className="font-medium">Nasi: {order.rice_name}</p>
+                        <p className="text-sm text-muted-foreground">{order.pack_qty} pack</p>
+                      </div>
+                      <span className="font-medium">{formatIDR(order.rice_price * order.pack_qty)}</span>
+                    </div>
 
-                {items.filter((i) => i.item_type === 'addon').map((item) => (
-                  <div key={item.id} className="flex items-center justify-between p-3 rounded-lg bg-muted">
+                    {items.filter((i) => i.item_type === 'protein').map((item) => (
+                      <div key={item.id} className="flex items-center justify-between p-3 rounded-lg bg-muted">
+                        <div>
+                          <p className="font-medium">Protein: {item.item_name}</p>
+                          <p className="text-sm text-muted-foreground">{order.pack_qty} pack</p>
+                        </div>
+                        <span className="font-medium">{formatIDR(item.price * order.pack_qty)}</span>
+                      </div>
+                    ))}
+
+                    {items.filter((i) => i.item_type === 'addon').map((item) => (
+                      <div key={item.id} className="flex items-center justify-between p-3 rounded-lg bg-muted">
+                        <div>
+                          <p className="font-medium">Lauk: {item.item_name}</p>
+                          <p className="text-sm text-muted-foreground">{order.pack_qty} pack</p>
+                        </div>
+                        <span className="font-medium">{formatIDR(item.price * order.pack_qty)}</span>
+                      </div>
+                    ))}
+                  </>
+                )}
+
+                {/* Packaging */}
+                {order.packaging_type && (
+                  <div className="flex items-center justify-between p-3 rounded-lg bg-muted">
                     <div>
-                      <p className="font-medium">Lauk: {item.item_name}</p>
+                      <p className="font-medium">Kemasan: {order.packaging_type}</p>
                       <p className="text-sm text-muted-foreground">{order.pack_qty} pack</p>
                     </div>
-                    <span className="font-medium">{formatIDR(item.price * order.pack_qty)}</span>
+                    <span className="font-medium">{formatIDR(order.packaging_fee)}</span>
                   </div>
-                ))}
+                )}
 
                 {order.delivery_type === 'delivery' && order.delivery_fee > 0 && (
                   <div className="flex items-center justify-between p-3 rounded-lg bg-muted">
