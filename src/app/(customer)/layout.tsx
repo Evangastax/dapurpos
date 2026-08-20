@@ -9,9 +9,11 @@ import {
   User,
   Menu,
   X,
+  LogOut,
 } from 'lucide-react'
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
+import { useAuth } from '@/context/auth-context'
 
 export default function CustomerLayout({
   children,
@@ -19,12 +21,18 @@ export default function CustomerLayout({
   children: React.ReactNode
 }) {
   const pathname = usePathname()
+  const { user, logout } = useAuth()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
   const navItems = [
     { href: '/menu', label: 'Menu', labelId: 'Menu' },
     { href: '/orders', label: 'Orders', labelId: 'Pesanan' },
   ]
+
+  function handleLogout() {
+    logout()
+    window.location.href = '/'
+  }
 
   return (
     <div className="flex flex-col min-h-screen">
@@ -59,20 +67,28 @@ export default function CustomerLayout({
 
           {/* Actions */}
           <div className="flex items-center gap-3">
-            <Link href="/orders">
-              <button className="relative rounded-lg p-2 hover:bg-muted transition-colors">
-                <ShoppingBag className="h-5 w-5" />
-                <span className="absolute right-0 top-0 h-4 w-4 rounded-full bg-primary text-on-primary text-xs flex items-center justify-center">
-                  2
-                </span>
-              </button>
-            </Link>
-            <Link href="/login">
-              <Button variant="outline" size="sm" className="hidden md:flex">
-                <User className="mr-2 h-4 w-4" />
-                Masuk
-              </Button>
-            </Link>
+            {user ? (
+              <>
+                <Link href="/orders">
+                  <button className="relative rounded-lg p-2 hover:bg-muted transition-colors">
+                    <ShoppingBag className="h-5 w-5" />
+                  </button>
+                </Link>
+                <Link href="/profile">
+                  <Button variant="outline" size="sm" className="hidden md:flex">
+                    <User className="mr-2 h-4 w-4" />
+                    {user.name}
+                  </Button>
+                </Link>
+              </>
+            ) : (
+              <Link href="/login">
+                <Button variant="outline" size="sm" className="hidden md:flex">
+                  <User className="mr-2 h-4 w-4" />
+                  Masuk
+                </Button>
+              </Link>
+            )}
 
             {/* Mobile menu button */}
             <button
@@ -107,13 +123,33 @@ export default function CustomerLayout({
                   {item.labelId}
                 </Link>
               ))}
-              <Link
-                href="/login"
-                onClick={() => setMobileMenuOpen(false)}
-                className="rounded-lg px-4 py-2.5 text-sm font-medium hover:bg-muted transition-colors"
-              >
-                Masuk
-              </Link>
+              {user ? (
+                <>
+                  <Link
+                    href="/profile"
+                    onClick={() => setMobileMenuOpen(false)}
+                    className="rounded-lg px-4 py-2.5 text-sm font-medium hover:bg-muted transition-colors"
+                  >
+                    <User className="inline-block mr-2 h-4 w-4" />
+                    Profile
+                  </Link>
+                  <button
+                    onClick={() => { handleLogout(); setMobileMenuOpen(false) }}
+                    className="rounded-lg px-4 py-2.5 text-sm font-medium hover:bg-muted transition-colors text-left text-destructive"
+                  >
+                    <LogOut className="inline-block mr-2 h-4 w-4" />
+                    Keluar
+                  </button>
+                </>
+              ) : (
+                <Link
+                  href="/login"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="rounded-lg px-4 py-2.5 text-sm font-medium hover:bg-muted transition-colors"
+                >
+                  Masuk
+                </Link>
+              )}
             </nav>
           </div>
         )}
