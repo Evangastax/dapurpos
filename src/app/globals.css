@@ -1,26 +1,53 @@
+@import url('https://fonts.googleapis.com/css2?family=Karla:wght@300;400;500;600;700&family=Playfair+Display+SC:wght@400;700&display=swap');
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* DapurPOS Design System */
+  --color-primary: #DC2626;
+  --color-on-primary: #FFFFFF;
+  --color-secondary: #F87171;
+  --color-accent: #A16207;
+  --color-background: #FEF2F2;
+  --color-foreground: #450A0A;
+  --color-muted: #F0EDF1;
+  --color-border: #FECACA;
+  --color-destructive: #DC2626;
+  --color-ring: #DC2626;
+
+  /* Status colors */
+  --color-success: #16A34A;
+  --color-warning: #CA8A04;
+  --color-info: #2563EB;
+
+  /* Typography */
+  --font-heading: 'Playfair Display SC', serif;
+  --font-body: 'Karla', sans-serif;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --color-primary: var(--color-primary);
+  --color-on-primary: var(--color-on-primary);
+  --color-secondary: var(--color-secondary);
+  --color-accent: var(--color-accent);
+  --color-background: var(--color-background);
+  --color-foreground: var(--color-foreground);
+  --color-muted: var(--color-muted);
+  --color-border: var(--color-border);
+  --color-destructive: var(--color-destructive);
+  --color-ring: var(--color-ring);
+  --color-success: var(--color-success);
+  --color-warning: var(--color-warning);
+  --color-info: var(--color-info);
+  --font-heading: var(--font-heading);
+  --font-body: var(--font-body);
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--color-background);
+  color: var(--color-foreground);
+  font-family: var(--font-body);
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-heading);
 }
