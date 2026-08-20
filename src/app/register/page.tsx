@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { UtensilsCrossed, UserPlus, CheckCircle } from 'lucide-react'
+import { supabase } from '@/lib/supabase'
 
 export default function RegisterPage() {
   const router = useRouter()
@@ -20,7 +21,7 @@ export default function RegisterPage() {
   const [error, setError] = useState('')
   const [success, setSuccess] = useState(false)
 
-  const handleRegister = async () => {
+  async function handleRegister() {
     if (!formData.name || !formData.phone) {
       setError('Nama dan nomor telepon harus diisi')
       return
@@ -29,8 +30,31 @@ export default function RegisterPage() {
     setError('')
 
     try {
-      const { signUp } = await import('@/lib/db/auth')
-      await signUp(formData.phone, formData.name, formData.email, formData.address)
+      // Check if phone exists
+      const { data: existing } = await supabase
+        .from('users')
+        .select('id')
+        .eq('phone', formData.phone)
+        .single()
+
+      if (existing) {
+        setError('Nomor telepon sudah terdaftar')
+        return
+      }
+
+      // Create user
+      const { error } = await supabase
+        .from('users')
+        .insert({
+          name: formData.name,
+          phone: formData.phone,
+          email: formData.email || null,
+          address: formData.address || null,
+          role: 'customer',
+        })
+
+      if (error) throw error
+
       setSuccess(true)
     } catch (err: any) {
       setError(err.message || 'Gagal mendaftar')
@@ -77,7 +101,6 @@ export default function RegisterPage() {
           </p>
         </CardHeader>
         <CardContent className="space-y-4">
-          {/* Error */}
           {error && (
             <div className="rounded-lg bg-destructive/10 border border-destructive/20 p-3 text-sm text-destructive">
               {error}
@@ -88,18 +111,14 @@ export default function RegisterPage() {
             label="Nama Lengkap *"
             placeholder="John Doe"
             value={formData.name}
-            onChange={(e) =>
-              setFormData({ ...formData, name: e.target.value })
-            }
+            onChange={(e) => setFormData({ ...formData, name: e.target.value })}
           />
           <Input
             label="Nomor WhatsApp *"
             type="tel"
             placeholder="0812-3456-7890"
             value={formData.phone}
-            onChange={(e) =>
-              setFormData({ ...formData, phone: e.target.value })
-            }
+            onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
             helperText="Nomor ini akan digunakan untuk login"
           />
           <Input
@@ -107,17 +126,13 @@ export default function RegisterPage() {
             type="email"
             placeholder="email@example.com"
             value={formData.email}
-            onChange={(e) =>
-              setFormData({ ...formData, email: e.target.value })
-            }
+            onChange={(e) => setFormData({ ...formData, email: e.target.value })}
           />
           <Input
             label="Alamat (Opsional)"
             placeholder="Alamat lengkap Anda"
             value={formData.address}
-            onChange={(e) =>
-              setFormData({ ...formData, address: e.target.value })
-            }
+            onChange={(e) => setFormData({ ...formData, address: e.target.value })}
           />
           <Button className="w-full" onClick={handleRegister} loading={loading}>
             <UserPlus className="mr-2 h-4 w-4" />

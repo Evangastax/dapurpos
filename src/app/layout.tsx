@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { AuthProvider } from "@/context/auth-context";
 
 export const metadata: Metadata = {
   title: "DapurPOS - Catering Management System",
@@ -13,7 +14,9 @@ export default function RootLayout({
 }) {
   return (
     <html lang="id" className="h-full antialiased">
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col">
+        <AuthProvider>{children}</AuthProvider>
+      </body>
     </html>
   );
 }

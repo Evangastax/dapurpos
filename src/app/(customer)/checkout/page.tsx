@@ -1,73 +1,97 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Badge } from '@/components/ui/badge'
 import {
   MapPin,
-  Clock,
   Truck,
   Store,
   Calendar,
   AlertTriangle,
   QrCode,
   CheckCircle,
+  Loader2,
 } from 'lucide-react'
-import { formatIDR, calculateDeliveryFee, formatDate } from '@/lib/utils'
+import { formatIDR, calculateDeliveryFee, generateOrderNumber, getCancelDeadline } from '@/lib/utils'
+import { useAuth } from '@/context/auth-context'
+import { supabase } from '@/lib/supabase'
+import { MenuItem } from '@/types'
 
-// Mock combo data (should come from state/context)
-const mockCombo = {
-  rice: { name: 'Nasi Putih', price: 5000 },
-  proteins: [
-    { name: 'Ayam Goreng', price: 12000 },
-    { name: 'Telur Balado', price: 8000 },
-  ],
-  addons: [
-    { name: 'Sambal', price: 2000 },
-    { name: 'Kerupuk', price: 2000 },
-  ],
-  quantity: 30,
+interface ComboData {
+  rice: MenuItem
+  proteins: MenuItem[]
+  addons: MenuItem[]
+  quantity: number
+  comboPrice: number
+  subtotal: number
 }
 
 const timeSlots = [
-  { id: 'pagi', label: 'Pagi', time: '08:00-11:00', icon: '🌅' },
-  { id: 'siang', label: 'Siang', time: '11:00-14:00', icon: '☀️' },
-  { id: 'sore', label: 'Sore', time: '14:00-17:00', icon: '🌇' },
+  { id: 'pagi', label: 'Pagi', time: '08:00-11:00' },
+  { id: 'siang', label: 'Siang', time: '11:00-14:00' },
+  { id: 'sore', label: 'Sore', time: '14:00-17:00' },
 ]
 
 export default function CheckoutPage() {
   const router = useRouter()
+  const { user } = useAuth()
+  const [combo, setCombo] = useState<ComboData | null>(null)
   const [deliveryType, setDeliveryType] = useState<'delivery' | 'pickup'>('delivery')
   const [address, setAddress] = useState('')
-  const [distance, setDistance] = useState(2)
+  const [distance, setDistance] = useState(3)
   const [selectedDate, setSelectedDate] = useState('')
   const [selectedSlot, setSelectedSlot] = useState('')
   const [notes, setNotes] = useState('')
   const [showQRIS, setShowQRIS] = useState(false)
   const [orderPlaced, setOrderPlaced] = useState(false)
+  const [orderNumber, setOrderNumber] = useState('')
+  const [loading, setLoading] = useState(false)
 
-  const comboPrice =
-    mockCombo.rice.price +
-    mockCombo.proteins.reduce((sum, p) => sum + p.price, 0) +
-    mockCombo.addons.reduce((sum, a) => sum + a.price, 0)
+  useEffect(() => {
+    if (!user) {
+      router.push('/login')
+      return
+    }
 
-  const subtotal = comboPrice * mockCombo.quantity
+    // Load combo from localStorage
+    const stored = localStorage.getItem('dapurpos_combo')
+    if (stored) {
+      try {
+        setCombo(JSON.parse(stored))
+      } catch {
+        router.push('/menu')
+      }
+    } else {
+      router.push('/menu')
+    }
+  }, [user])
+
+  if (!combo || !user) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    )
+  }
+
+  const comboData = combo
   const deliveryFee = deliveryType === 'delivery' ? calculateDeliveryFee(distance).total_fee : 0
-  const grandTotal = subtotal + deliveryFee
+  const grandTotal = comboData.subtotal + deliveryFee
   const dpAmount = grandTotal * 0.5
 
-  const getMinDate = () => {
+  function getMinDate() {
     const today = new Date()
-    const minLeadTime = mockCombo.quantity > 50 ? 5 : mockCombo.quantity > 25 ? 2 : 2
+    const minLeadTime = comboData.quantity > 50 ? 5 : comboData.quantity > 25 ? 2 : 2
     today.setDate(today.getDate() + minLeadTime)
     return today.toISOString().split('T')[0]
   }
 
-  const handlePlaceOrder = () => {
-    // Validate
+  async function handlePlaceOrder() {
+    if (!user || !comboData) return
+
     if (deliveryType === 'delivery' && !address) {
       alert('Alamat pengiriman harus diisi')
       return
@@ -81,13 +105,90 @@ export default function CheckoutPage() {
       return
     }
 
-    // Show QRIS
     setShowQRIS(true)
   }
 
-  const handleConfirmPayment = () => {
-    // Save order to Supabase
-    setOrderPlaced(true)
+  async function handleConfirmPayment() {
+    setLoading(true)
+
+    try {
+      const newOrderNumber = generateOrderNumber()
+      const cancelDeadline = getCancelDeadline(selectedDate, comboData.quantity)
+
+      // Create order
+      const { data: order, error: orderError } = await supabase
+        .from('orders')
+        .insert({
+          user_id: user!.id,
+          order_number: newOrderNumber,
+          rice_id: comboData.rice.id,
+          rice_name: comboData.rice.name,
+          rice_price: comboData.rice.price,
+          combo_price: comboData.comboPrice,
+          pack_qty: comboData.quantity,
+          subtotal: comboData.subtotal,
+          delivery_type: deliveryType,
+          delivery_address: deliveryType === 'delivery' ? address : null,
+          delivery_distance_km: deliveryType === 'delivery' ? distance : null,
+          delivery_fee: deliveryFee,
+          time_slot: selectedSlot,
+          delivery_date: selectedDate,
+          grand_total: grandTotal,
+          dp_amount: dpAmount,
+          remaining_amount: grandTotal - dpAmount,
+          status: 'awaiting_dp',
+          cancel_deadline: cancelDeadline.toISOString().split('T')[0],
+          notes: notes || null,
+        })
+        .select()
+        .single()
+
+      if (orderError) throw orderError
+
+      // Create order items
+      const orderItems = [
+        ...comboData.proteins.map((p) => ({
+          order_id: order.id,
+          item_type: 'protein',
+          item_id: p.id,
+          item_name: p.name,
+          price: p.price,
+        })),
+        ...comboData.addons.map((a) => ({
+          order_id: order.id,
+          item_type: 'addon',
+          item_id: a.id,
+          item_name: a.name,
+          price: a.price,
+        })),
+      ]
+
+      if (orderItems.length > 0) {
+        const { error: itemsError } = await supabase
+          .from('order_items')
+          .insert(orderItems)
+
+        if (itemsError) throw itemsError
+      }
+
+      // Create payment record
+      await supabase
+        .from('payments')
+        .insert({
+          order_id: order.id,
+          payment_type: 'dp',
+          amount: dpAmount,
+          method: 'qris',
+        })
+
+      setOrderNumber(newOrderNumber)
+      setOrderPlaced(true)
+      localStorage.removeItem('dapurpos_combo')
+    } catch (err: any) {
+      alert('Error: ' + err.message)
+    } finally {
+      setLoading(false)
+    }
   }
 
   if (orderPlaced) {
@@ -97,9 +198,7 @@ export default function CheckoutPage() {
           <div className="mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-success/10 mx-auto">
             <CheckCircle className="h-10 w-10 text-success" />
           </div>
-          <h1 className="font-heading text-2xl font-bold mb-2">
-            Pesanan Berhasil!
-          </h1>
+          <h1 className="font-heading text-2xl font-bold mb-2">Pesanan Berhasil!</h1>
           <p className="text-muted-foreground mb-6">
             Pesanan Anda telah diterima. Silakan bayar DP untuk konfirmasi.
           </p>
@@ -107,7 +206,7 @@ export default function CheckoutPage() {
             <div className="space-y-2">
               <div className="flex justify-between">
                 <span className="text-muted-foreground">No. Pesanan</span>
-                <span className="font-medium">DP200820099</span>
+                <span className="font-medium">{orderNumber}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Total</span>
@@ -141,20 +240,12 @@ export default function CheckoutPage() {
               <CardTitle className="text-center">Pembayaran DP</CardTitle>
             </CardHeader>
             <CardContent className="space-y-6">
-              {/* Amount */}
               <div className="text-center">
-                <p className="text-sm text-muted-foreground mb-1">
-                  Jumlah yang harus dibayar
-                </p>
-                <p className="text-3xl font-bold text-primary">
-                  {formatIDR(dpAmount)}
-                </p>
-                <p className="text-sm text-muted-foreground mt-1">
-                  DP 50% dari total {formatIDR(grandTotal)}
-                </p>
+                <p className="text-sm text-muted-foreground mb-1">Jumlah yang harus dibayar</p>
+                <p className="text-3xl font-bold text-primary">{formatIDR(dpAmount)}</p>
+                <p className="text-sm text-muted-foreground mt-1">DP 50% dari total {formatIDR(grandTotal)}</p>
               </div>
 
-              {/* QRIS */}
               <div className="rounded-lg border border-border p-6 text-center">
                 <div className="flex items-center justify-center gap-2 mb-4">
                   <QrCode className="h-5 w-5" />
@@ -172,27 +263,28 @@ export default function CheckoutPage() {
                 </p>
               </div>
 
-              {/* Instructions */}
               <div className="rounded-lg bg-info/10 border border-info/20 p-4 text-sm">
                 <p className="font-medium text-info mb-2">Instruksi Pembayaran:</p>
                 <ol className="list-decimal list-inside space-y-1 text-muted-foreground">
                   <li>Scan kode QRIS di atas</li>
                   <li>Bayar sesuai nominal yang tertera</li>
                   <li>Simpan bukti pembayaran</li>
-                  <li>Admin akan mengkonfirmasi pembayaran Anda</li>
+                  <li>Admin akan mengkonfirmasi pembayaran Anda via WhatsApp</li>
                 </ol>
               </div>
 
-              {/* Confirm button */}
+              <div className="rounded-lg bg-warning/10 border border-warning/20 p-3 text-sm">
+                <p className="text-warning font-medium">Penting!</p>
+                <p className="text-muted-foreground">
+                  Setelah membayar, admin akan memverifikasi pembayaran Anda. Status pesanan akan berubah setelah DP dikonfirmasi.
+                </p>
+              </div>
+
               <div className="flex gap-3">
-                <Button
-                  variant="outline"
-                  className="flex-1"
-                  onClick={() => setShowQRIS(false)}
-                >
+                <Button variant="outline" className="flex-1" onClick={() => setShowQRIS(false)}>
                   Kembali
                 </Button>
-                <Button className="flex-1" onClick={handleConfirmPayment}>
+                <Button className="flex-1" onClick={handleConfirmPayment} loading={loading}>
                   Saya Sudah Bayar
                 </Button>
               </div>
@@ -206,11 +298,44 @@ export default function CheckoutPage() {
   return (
     <div className="container mx-auto px-4 py-8">
       <div className="max-w-2xl mx-auto">
-        <h1 className="font-heading text-3xl font-bold mb-8 text-center">
-          Checkout
-        </h1>
+        <h1 className="font-heading text-3xl font-bold mb-8 text-center">Checkout</h1>
 
         <div className="space-y-6">
+          {/* Combo Summary */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Combo Anda</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-2">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Nasi</span>
+                  <span>{comboData.rice.name} ({formatIDR(comboData.rice.price)})</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Protein</span>
+                  <span>{comboData.proteins.map((p) => p.name).join(', ')}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Lauk</span>
+                  <span>{comboData.addons.length > 0 ? comboData.addons.map((a) => a.name).join(', ') : '-'}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Harga/pack</span>
+                  <span>{formatIDR(comboData.comboPrice)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Jumlah</span>
+                  <span>{comboData.quantity} pack</span>
+                </div>
+                <div className="flex justify-between font-bold pt-2 border-t border-border">
+                  <span>Subtotal</span>
+                  <span className="text-primary">{formatIDR(comboData.subtotal)}</span>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
           {/* Delivery Type */}
           <Card>
             <CardHeader>
@@ -224,36 +349,28 @@ export default function CheckoutPage() {
                 <button
                   onClick={() => setDeliveryType('delivery')}
                   className={`flex flex-col items-center gap-2 rounded-lg border-2 p-4 transition-colors ${
-                    deliveryType === 'delivery'
-                      ? 'border-primary bg-primary/5'
-                      : 'border-border hover:border-primary/50'
+                    deliveryType === 'delivery' ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50'
                   }`}
                 >
                   <Truck className="h-6 w-6" />
                   <span className="font-medium">Delivery</span>
-                  <span className="text-xs text-muted-foreground">
-                    Diantar ke lokasi
-                  </span>
+                  <span className="text-xs text-muted-foreground">Diantar ke lokasi</span>
                 </button>
                 <button
                   onClick={() => setDeliveryType('pickup')}
                   className={`flex flex-col items-center gap-2 rounded-lg border-2 p-4 transition-colors ${
-                    deliveryType === 'pickup'
-                      ? 'border-primary bg-primary/5'
-                      : 'border-border hover:border-primary/50'
+                    deliveryType === 'pickup' ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50'
                   }`}
                 >
                   <Store className="h-6 w-6" />
                   <span className="font-medium">Pickup</span>
-                  <span className="text-xs text-muted-foreground">
-                    Ambil sendiri
-                  </span>
+                  <span className="text-xs text-muted-foreground">Ambil sendiri</span>
                 </button>
               </div>
             </CardContent>
           </Card>
 
-          {/* Address (if delivery) */}
+          {/* Address */}
           {deliveryType === 'delivery' && (
             <Card>
               <CardHeader>
@@ -279,14 +396,7 @@ export default function CheckoutPage() {
                 {distance > 0 && (
                   <div className="rounded-lg bg-muted p-3">
                     <p className="text-sm font-medium">Ongkos Kirim</p>
-                    <p className="text-lg font-bold text-primary">
-                      {formatIDR(calculateDeliveryFee(distance).total_fee)}
-                    </p>
-                    {distance > 3 && (
-                      <p className="text-xs text-muted-foreground mt-1">
-                        Base {formatIDR(20000)} + {formatIDR(calculateDeliveryFee(distance).extra_fee)} (jarak {distance}km)
-                      </p>
-                    )}
+                    <p className="text-lg font-bold text-primary">{formatIDR(calculateDeliveryFee(distance).total_fee)}</p>
                   </div>
                 )}
               </CardContent>
@@ -309,40 +419,19 @@ export default function CheckoutPage() {
                 onChange={(e) => setSelectedDate(e.target.value)}
                 min={getMinDate()}
               />
-              {mockCombo.quantity > 25 && (
-                <div className="rounded-lg bg-warning/10 border border-warning/20 p-3 text-sm">
-                  <div className="flex items-center gap-2">
-                    <AlertTriangle className="h-4 w-4 text-warning" />
-                    <span className="font-medium text-warning">
-                      Minimal H-{mockCombo.quantity > 50 ? '5' : '2'}
-                    </span>
-                  </div>
-                  <p className="text-muted-foreground mt-1">
-                    Pesanan {mockCombo.quantity} pack harus dipesan minimal {mockCombo.quantity > 50 ? '5' : '2'} hari sebelumnya
-                  </p>
-                </div>
-              )}
-
               <div>
-                <label className="block text-sm font-medium mb-2">
-                  Waktu Pengiriman
-                </label>
+                <label className="block text-sm font-medium mb-2">Waktu Pengiriman</label>
                 <div className="grid grid-cols-3 gap-3">
                   {timeSlots.map((slot) => (
                     <button
                       key={slot.id}
                       onClick={() => setSelectedSlot(slot.id)}
                       className={`flex flex-col items-center gap-1 rounded-lg border-2 p-3 transition-colors ${
-                        selectedSlot === slot.id
-                          ? 'border-primary bg-primary/5'
-                          : 'border-border hover:border-primary/50'
+                        selectedSlot === slot.id ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50'
                       }`}
                     >
-                      <span className="text-lg">{slot.icon}</span>
                       <span className="font-medium text-sm">{slot.label}</span>
-                      <span className="text-xs text-muted-foreground">
-                        {slot.time}
-                      </span>
+                      <span className="text-xs text-muted-foreground">{slot.time}</span>
                     </button>
                   ))}
                 </div>
@@ -373,16 +462,8 @@ export default function CheckoutPage() {
             <CardContent>
               <div className="space-y-3">
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Combo</span>
-                  <span>{formatIDR(comboPrice)}/pack</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Jumlah</span>
-                  <span>{mockCombo.quantity} pack</span>
-                </div>
-                <div className="flex justify-between">
                   <span className="text-muted-foreground">Subtotal</span>
-                  <span>{formatIDR(subtotal)}</span>
+                  <span>{formatIDR(comboData.subtotal)}</span>
                 </div>
                 {deliveryType === 'delivery' && (
                   <div className="flex justify-between">
@@ -399,9 +480,7 @@ export default function CheckoutPage() {
                 <div className="rounded-lg bg-primary/5 p-3">
                   <div className="flex justify-between">
                     <span className="text-sm">DP yang harus dibayar (50%)</span>
-                    <span className="font-bold text-primary">
-                      {formatIDR(dpAmount)}
-                    </span>
+                    <span className="font-bold text-primary">{formatIDR(dpAmount)}</span>
                   </div>
                 </div>
               </div>
