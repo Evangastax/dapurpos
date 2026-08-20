@@ -15,6 +15,7 @@ import {
   XCircle,
   Truck,
   Loader2,
+  QrCode,
 } from 'lucide-react'
 import { formatIDR, formatDate, formatDateShort, canCancelOrder } from '@/lib/utils'
 import { useAuth } from '@/context/auth-context'
@@ -122,15 +123,44 @@ export default function OrderDetailPage() {
           {/* Status Info */}
           {order.status === 'awaiting_dp' && (
             <Card className="border-warning/50 bg-warning/5">
-              <CardContent className="p-4">
+              <CardContent className="p-4 space-y-4">
                 <div className="flex items-center gap-2 mb-2">
                   <Clock className="h-5 w-5 text-warning" />
                   <span className="font-medium text-warning">Menunggu Pembayaran DP</span>
                 </div>
                 <p className="text-sm text-muted-foreground">
-                  Silakan bayar DP sebesar {formatIDR(order.dp_amount)} untuk mengkonfirmasi pesanan.
-                  Admin akan memverifikasi pembayaran Anda.
+                  Silakan bayar DP sebesar <strong>{formatIDR(order.dp_amount)}</strong> untuk mengkonfirmasi pesanan.
                 </p>
+
+                {/* QRIS Payment */}
+                <div className="rounded-lg border border-border bg-background p-4 text-center">
+                  <div className="flex items-center justify-center gap-2 mb-3">
+                    <QrCode className="h-5 w-5" />
+                    <span className="font-medium">Scan QRIS untuk Bayar DP</span>
+                  </div>
+                  <div className="rounded-lg overflow-hidden mb-3">
+                    <img
+                      src="https://qlwyfftatulvkjrnlpob.supabase.co/storage/v1/object/public/qris/WhatsApp%20Image%202026-08-20%20at%2010.05.04%20AM.jpeg"
+                      alt="QRIS DapurPOS"
+                      className="w-full max-w-[250px] mx-auto"
+                    />
+                  </div>
+                  <p className="text-sm font-medium text-primary mb-1">
+                    Jumlah: {formatIDR(order.dp_amount)}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Scan kode QR di atas menggunakan aplikasi banking Anda
+                  </p>
+                </div>
+
+                <div className="rounded-lg bg-muted p-3 text-sm">
+                  <p className="font-medium mb-1">Setelah membayar:</p>
+                  <ol className="list-decimal list-inside space-y-1 text-muted-foreground">
+                    <li>Simpan bukti pembayaran</li>
+                    <li>Admin akan memverifikasi pembayaran Anda</li>
+                    <li>Status pesanan akan berubah setelah DP dikonfirmasi</li>
+                  </ol>
+                </div>
               </CardContent>
             </Card>
           )}
