@@ -140,7 +140,7 @@ export default function CheckoutPage() {
       alert('Waktu pengiriman harus dipilih')
       return
     }
-    if (!selectedPackaging) {
+    if (comboData.type === 'maincourse' && !selectedPackaging) {
       alert('Pilih kemasan terlebih dahulu')
       return
     }
@@ -393,39 +393,41 @@ export default function CheckoutPage() {
             </CardContent>
           </Card>
 
-          {/* Packaging */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Package className="h-5 w-5" />
-                Kemasan
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-3 gap-3">
-                {packagingOptions.map(pkg => (
-                  <button
-                    key={pkg.id}
-                    onClick={() => setSelectedPackaging(pkg)}
-                    className={`flex flex-col items-center gap-2 rounded-lg border-2 p-4 transition-colors ${
-                      selectedPackaging?.id === pkg.id ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50'
-                    }`}
-                  >
-                    <Package className="h-6 w-6" />
-                    <span className="font-medium text-sm">{pkg.name}</span>
-                    <span className="text-xs text-muted-foreground">{formatIDR(pkg.price)}/pack</span>
-                  </button>
-                ))}
-              </div>
-              {selectedPackaging && (
-                <div className="mt-3 rounded-lg bg-muted p-3">
-                  <p className="text-sm">
-                    Biaya kemasan: {formatIDR(selectedPackaging.price)} × {comboData.quantity} pack = {formatIDR(packagingFee)}
-                  </p>
+          {/* Packaging - Only for Main Course */}
+          {comboData.type === 'maincourse' && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Package className="h-5 w-5" />
+                  Kemasan
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-3 gap-3">
+                  {packagingOptions.map(pkg => (
+                    <button
+                      key={pkg.id}
+                      onClick={() => setSelectedPackaging(pkg)}
+                      className={`flex flex-col items-center gap-2 rounded-lg border-2 p-4 transition-colors ${
+                        selectedPackaging?.id === pkg.id ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50'
+                      }`}
+                    >
+                      <Package className="h-6 w-6" />
+                      <span className="font-medium text-sm">{pkg.name}</span>
+                      <span className="text-xs text-muted-foreground">{formatIDR(pkg.price)}/pack</span>
+                    </button>
+                  ))}
                 </div>
-              )}
-            </CardContent>
-          </Card>
+                {selectedPackaging && (
+                  <div className="mt-3 rounded-lg bg-muted p-3">
+                    <p className="text-sm">
+                      Biaya kemasan: {formatIDR(selectedPackaging.price)} × {comboData.quantity} pack = {formatIDR(packagingFee)}
+                    </p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
 
           {/* Delivery Type */}
           <Card>

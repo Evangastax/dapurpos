@@ -13,6 +13,7 @@ import {
   Settings,
   ChevronLeft,
   ChevronRight,
+  Box,
 } from 'lucide-react'
 import { useState } from 'react'
 
@@ -34,6 +35,12 @@ const menuItems = [
     titleId: 'Menu',
     href: '/admin/menu',
     icon: UtensilsCrossed,
+  },
+  {
+    title: 'Packaging',
+    titleId: 'Kemasan',
+    href: '/admin/packaging',
+    icon: Box,
   },
   {
     title: 'Inventory',
