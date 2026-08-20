@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -11,106 +11,175 @@ import {
   Search,
   AlertTriangle,
   Package,
-  ArrowUpDown,
+  X,
+  Save,
+  Loader2,
 } from 'lucide-react'
 import { formatIDR } from '@/lib/utils'
+import { supabase } from '@/lib/supabase'
+import { Ingredient, Supplier } from '@/types'
 
-// Mock data
-const mockIngredients = [
-  {
-    id: '1',
-    name: 'Beras Putih',
-    unit: 'kg',
-    stock_qty: 25,
-    min_stock_alert: 10,
-    cost_per_unit: 15000,
-    supplier: 'Beras Jaya',
-  },
-  {
-    id: '2',
-    name: 'Ayam',
-    unit: 'kg',
-    stock_qty: 15,
-    min_stock_alert: 20,
-    cost_per_unit: 45000,
-    supplier: 'PT Ayam Segar',
-  },
-  {
-    id: '3',
-    name: 'Telur',
-    unit: 'butir',
-    stock_qty: 200,
-    min_stock_alert: 50,
-    cost_per_unit: 2500,
-    supplier: 'Telur Fresh',
-  },
-  {
-    id: '4',
-    name: 'Tempe',
-    unit: 'papan',
-    stock_qty: 30,
-    min_stock_alert: 10,
-    cost_per_unit: 5000,
-    supplier: 'Tempe Nusantara',
-  },
-  {
-    id: '5',
-    name: 'Cabai',
-    unit: 'kg',
-    stock_qty: 5,
-    min_stock_alert: 3,
-    cost_per_unit: 35000,
-    supplier: 'Bumbu Nusantara',
-  },
-  {
-    id: '6',
-    name: 'Minyak Goreng',
-    unit: 'liter',
-    stock_qty: 20,
-    min_stock_alert: 5,
-    cost_per_unit: 18000,
-    supplier: 'Sembako Jaya',
-  },
-  {
-    id: '7',
-    name: 'Kerupuk',
-    unit: 'pack',
-    stock_qty: 50,
-    min_stock_alert: 15,
-    cost_per_unit: 8000,
-    supplier: 'Snack Indo',
-  },
-  {
-    id: '8',
-    name: 'Sambal',
-    unit: 'pack',
-    stock_qty: 5,
-    min_stock_alert: 10,
-    cost_per_unit: 12000,
-    supplier: 'Bumbu Nusantara',
-  },
-]
+interface FormData {
+  name: string
+  unit: string
+  stock_qty: string
+  min_stock_alert: string
+  cost_per_unit: string
+  supplier_id: string
+}
 
 export default function InventoryPage() {
+  const [ingredients, setIngredients] = useState<Ingredient[]>([])
+  const [suppliers, setSuppliers] = useState<Supplier[]>([])
   const [searchQuery, setSearchQuery] = useState('')
+  const [loading, setLoading] = useState(true)
+  const [showModal, setShowModal] = useState(false)
+  const [editingItem, setEditingItem] = useState<Ingredient | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [formData, setFormData] = useState<FormData>({
+    name: '',
+    unit: '',
+    stock_qty: '',
+    min_stock_alert: '',
+    cost_per_unit: '',
+    supplier_id: '',
+  })
 
-  const filteredIngredients = mockIngredients.filter((item) =>
+  useEffect(() => {
+    fetchData()
+  }, [])
+
+  async function fetchData() {
+    setLoading(true)
+    try {
+      const [ingredientsRes, suppliersRes] = await Promise.all([
+        supabase.from('ingredients').select('*').order('name'),
+        supabase.from('suppliers').select('*').order('name'),
+      ])
+
+      if (ingredientsRes.data) setIngredients(ingredientsRes.data)
+      if (suppliersRes.data) setSuppliers(suppliersRes.data)
+    } catch (err) {
+      console.error('Error:', err)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  function openAdd() {
+    setEditingItem(null)
+    setFormData({
+      name: '',
+      unit: '',
+      stock_qty: '',
+      min_stock_alert: '',
+      cost_per_unit: '',
+      supplier_id: '',
+    })
+    setShowModal(true)
+  }
+
+  function openEdit(item: Ingredient) {
+    setEditingItem(item)
+    setFormData({
+      name: item.name,
+      unit: item.unit,
+      stock_qty: item.stock_qty.toString(),
+      min_stock_alert: item.min_stock_alert?.toString() || '',
+      cost_per_unit: item.cost_per_unit?.toString() || '',
+      supplier_id: item.supplier_id || '',
+    })
+    setShowModal(true)
+  }
+
+  async function handleSave() {
+    if (!formData.name || !formData.unit) {
+      alert('Nama dan satuan harus diisi')
+      return
+    }
+
+    setSaving(true)
+    try {
+      const payload = {
+        name: formData.name,
+        unit: formData.unit,
+        stock_qty: parseFloat(formData.stock_qty) || 0,
+        min_stock_alert: parseFloat(formData.min_stock_alert) || null,
+        cost_per_unit: parseFloat(formData.cost_per_unit) || null,
+        supplier_id: formData.supplier_id || null,
+      }
+
+      if (editingItem) {
+        const { error } = await supabase
+          .from('ingredients')
+          .update(payload)
+          .eq('id', editingItem.id)
+        if (error) throw error
+      } else {
+        const { error } = await supabase
+          .from('ingredients')
+          .insert(payload)
+        if (error) throw error
+      }
+
+      setShowModal(false)
+      await fetchData()
+    } catch (err: any) {
+      alert('Error: ' + err.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function handleDelete(item: Ingredient) {
+    if (!confirm(`Hapus ${item.name}?`)) return
+
+    try {
+      const { error } = await supabase
+        .from('ingredients')
+        .delete()
+        .eq('id', item.id)
+      if (error) throw error
+      await fetchData()
+    } catch (err: any) {
+      alert('Error: ' + err.message)
+    }
+  }
+
+  async function updateStock(item: Ingredient, change: number) {
+    try {
+      const { error } = await supabase
+        .from('ingredients')
+        .update({ stock_qty: item.stock_qty + change })
+        .eq('id', item.id)
+      if (error) throw error
+      await fetchData()
+    } catch (err: any) {
+      alert('Error: ' + err.message)
+    }
+  }
+
+  const filteredIngredients = ingredients.filter((item) =>
     item.name.toLowerCase().includes(searchQuery.toLowerCase())
   )
 
-  const lowStockItems = mockIngredients.filter(
-    (item) => item.stock_qty <= item.min_stock_alert
+  const lowStockItems = ingredients.filter(
+    (item) => item.min_stock_alert && item.stock_qty <= item.min_stock_alert
   )
 
-  const getStockStatus = (current: number, min: number) => {
+  const getStockStatus = (current: number, min?: number | null) => {
+    if (!min) return { label: 'Aman', variant: 'success' as const }
     if (current <= min) return { label: 'Rendah', variant: 'destructive' as const }
-    if (current <= min * 1.5) return { label: 'Habis', variant: 'warning' as const }
+    if (current <= min * 1.5) return { label: 'Hampir Habis', variant: 'warning' as const }
     return { label: 'Aman', variant: 'success' as const }
   }
 
-  const getStockPercentage = (current: number, min: number) => {
-    const max = min * 5 // Assume max is 5x min
-    return Math.min(Math.round((current / max) * 100), 100)
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    )
   }
 
   return (
@@ -119,20 +188,12 @@ export default function InventoryPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">Inventory</h1>
-          <p className="text-muted-foreground">
-            Kelola stok bahan baku
-          </p>
+          <p className="text-muted-foreground">Kelola stok bahan baku</p>
         </div>
-        <div className="flex gap-2">
-          <Button variant="outline">
-            <ArrowUpDown className="mr-2 h-4 w-4" />
-            Riwayat Stok
-          </Button>
-          <Button>
-            <Plus className="mr-2 h-4 w-4" />
-            Tambah Bahan
-          </Button>
-        </div>
+        <Button onClick={openAdd}>
+          <Plus className="mr-2 h-4 w-4" />
+          Tambah Bahan
+        </Button>
       </div>
 
       {/* Low Stock Alert */}
@@ -156,74 +217,6 @@ export default function InventoryPage() {
         </Card>
       )}
 
-      {/* Stats */}
-      <div className="grid gap-4 md:grid-cols-4">
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
-                <Package className="h-5 w-5 text-primary" />
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Total Item</p>
-                <p className="text-xl font-bold">{mockIngredients.length}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/10">
-                <Package className="h-5 w-5 text-success" />
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Stok Aman</p>
-                <p className="text-xl font-bold">
-                  {mockIngredients.filter((i) => i.stock_qty > i.min_stock_alert).length}
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-warning/10">
-                <AlertTriangle className="h-5 w-5 text-warning" />
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Stok Rendah</p>
-                <p className="text-xl font-bold">{lowStockItems.length}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-info/10">
-                <Package className="h-5 w-5 text-info" />
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Total Nilai Stok</p>
-                <p className="text-xl font-bold">
-                  {formatIDR(
-                    mockIngredients.reduce(
-                      (sum, item) => sum + item.stock_qty * item.cost_per_unit,
-                      0
-                    )
-                  )}
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
       {/* Search */}
       <div className="relative max-w-sm">
         <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -242,33 +235,19 @@ export default function InventoryPage() {
             <table className="w-full">
               <thead>
                 <tr className="border-b border-border">
-                  <th className="text-left p-4 font-medium text-muted-foreground">
-                    Nama Bahan
-                  </th>
-                  <th className="text-left p-4 font-medium text-muted-foreground">
-                    Stok
-                  </th>
-                  <th className="text-left p-4 font-medium text-muted-foreground">
-                    Min. Stok
-                  </th>
-                  <th className="text-left p-4 font-medium text-muted-foreground">
-                    Status
-                  </th>
-                  <th className="text-left p-4 font-medium text-muted-foreground">
-                    Harga/Unit
-                  </th>
-                  <th className="text-left p-4 font-medium text-muted-foreground">
-                    Supplier
-                  </th>
-                  <th className="text-left p-4 font-medium text-muted-foreground">
-                    Aksi
-                  </th>
+                  <th className="text-left p-4 font-medium text-muted-foreground">Nama Bahan</th>
+                  <th className="text-left p-4 font-medium text-muted-foreground">Stok</th>
+                  <th className="text-left p-4 font-medium text-muted-foreground">Min. Stok</th>
+                  <th className="text-left p-4 font-medium text-muted-foreground">Status</th>
+                  <th className="text-left p-4 font-medium text-muted-foreground">Harga/Unit</th>
+                  <th className="text-left p-4 font-medium text-muted-foreground">Supplier</th>
+                  <th className="text-left p-4 font-medium text-muted-foreground">Aksi</th>
                 </tr>
               </thead>
               <tbody>
                 {filteredIngredients.map((item) => {
                   const status = getStockStatus(item.stock_qty, item.min_stock_alert)
-                  const percentage = getStockPercentage(item.stock_qty, item.min_stock_alert)
+                  const supplier = suppliers.find((s) => s.id === item.supplier_id)
 
                   return (
                     <tr
@@ -284,27 +263,43 @@ export default function InventoryPage() {
                         </div>
                       </td>
                       <td className="p-4">
-                        <span className="font-medium">
-                          {item.stock_qty} {item.unit}
-                        </span>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => updateStock(item, -1)}
+                            className="h-6 w-6 rounded bg-muted flex items-center justify-center hover:bg-muted/80"
+                          >
+                            -
+                          </button>
+                          <span className="font-medium w-16 text-center">
+                            {item.stock_qty} {item.unit}
+                          </span>
+                          <button
+                            onClick={() => updateStock(item, 1)}
+                            className="h-6 w-6 rounded bg-muted flex items-center justify-center hover:bg-muted/80"
+                          >
+                            +
+                          </button>
+                        </div>
                       </td>
                       <td className="p-4 text-muted-foreground">
-                        {item.min_stock_alert} {item.unit}
+                        {item.min_stock_alert || '-'} {item.unit}
                       </td>
                       <td className="p-4">
                         <Badge variant={status.variant}>{status.label}</Badge>
                       </td>
-                      <td className="p-4">{formatIDR(item.cost_per_unit)}</td>
+                      <td className="p-4">
+                        {item.cost_per_unit ? formatIDR(item.cost_per_unit) : '-'}
+                      </td>
                       <td className="p-4 text-muted-foreground">
-                        {item.supplier}
+                        {supplier?.name || '-'}
                       </td>
                       <td className="p-4">
                         <div className="flex gap-1">
-                          <button className="rounded-lg p-1.5 hover:bg-muted transition-colors">
+                          <button
+                            className="rounded-lg p-1.5 hover:bg-muted transition-colors"
+                            onClick={() => openEdit(item)}
+                          >
                             <Edit2 className="h-4 w-4 text-muted-foreground" />
-                          </button>
-                          <button className="rounded-lg p-1.5 hover:bg-primary/10 transition-colors">
-                            <Plus className="h-4 w-4 text-primary" />
                           </button>
                         </div>
                       </td>
@@ -316,6 +311,83 @@ export default function InventoryPage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Modal */}
+      {showModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <Card className="w-full max-w-md">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0">
+              <CardTitle>
+                {editingItem ? 'Edit Bahan' : 'Tambah Bahan'}
+              </CardTitle>
+              <button
+                onClick={() => setShowModal(false)}
+                className="rounded-lg p-1.5 hover:bg-muted transition-colors"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <Input
+                label="Nama Bahan *"
+                placeholder="Nama bahan"
+                value={formData.name}
+                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+              />
+              <Input
+                label="Satuan *"
+                placeholder="kg, liter, pcs"
+                value={formData.unit}
+                onChange={(e) => setFormData({ ...formData, unit: e.target.value })}
+              />
+              <Input
+                label="Stok Saat Ini"
+                type="number"
+                placeholder="0"
+                value={formData.stock_qty}
+                onChange={(e) => setFormData({ ...formData, stock_qty: e.target.value })}
+              />
+              <Input
+                label="Batas Stok Rendah"
+                type="number"
+                placeholder="20"
+                value={formData.min_stock_alert}
+                onChange={(e) => setFormData({ ...formData, min_stock_alert: e.target.value })}
+                helperText="Peringatan jika stok di bawah angka ini"
+              />
+              <Input
+                label="Harga per Unit (Rp)"
+                type="number"
+                placeholder="15000"
+                value={formData.cost_per_unit}
+                onChange={(e) => setFormData({ ...formData, cost_per_unit: e.target.value })}
+              />
+              <div>
+                <label className="block text-sm font-medium mb-1.5">Supplier</label>
+                <select
+                  className="w-full h-10 rounded-lg border border-border bg-background px-3 text-sm"
+                  value={formData.supplier_id}
+                  onChange={(e) => setFormData({ ...formData, supplier_id: e.target.value })}
+                >
+                  <option value="">Pilih Supplier</option>
+                  {suppliers.map((s) => (
+                    <option key={s.id} value={s.id}>{s.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex gap-3 pt-2">
+                <Button variant="outline" className="flex-1" onClick={() => setShowModal(false)}>
+                  Batal
+                </Button>
+                <Button className="flex-1" onClick={handleSave} loading={saving}>
+                  <Save className="mr-2 h-4 w-4" />
+                  Simpan
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
     </div>
   )
 }
