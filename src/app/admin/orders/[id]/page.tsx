@@ -20,6 +20,7 @@ import {
 } from 'lucide-react'
 import { formatIDR, formatDate, formatDateShort, canCancelOrder } from '@/lib/utils'
 import { supabase } from '@/lib/supabase'
+import { PrintReceipt } from '@/components/print-receipt'
 import Link from 'next/link'
 
 const statusConfig: Record<string, { label: string; variant: 'warning' | 'info' | 'success' | 'destructive' | 'secondary'; nextStatus?: string; nextLabel?: string }> = {
@@ -344,13 +345,14 @@ export default function OrderDetailPage() {
       </div>
 
       {/* Actions */}
-      <div className="flex gap-3">
+      <div className="flex gap-3 flex-wrap">
         {config.nextStatus && (
           <Button onClick={updateStatus} loading={updating}>
             <CheckCircle className="mr-2 h-4 w-4" />
             {config.nextLabel}
           </Button>
         )}
+        <PrintReceipt order={order} items={items} customer={customer} />
         {order.status !== 'cancelled' && order.status !== 'done' && (
           <Button variant="destructive" onClick={cancelOrder} loading={updating}>
             <XCircle className="mr-2 h-4 w-4" />

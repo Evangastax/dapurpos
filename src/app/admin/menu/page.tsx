@@ -13,6 +13,7 @@ import {
   UtensilsCrossed,
   Drumstick,
   Cookie,
+  Cake,
   X,
   Save,
   Loader2,
@@ -21,7 +22,7 @@ import { formatIDR } from '@/lib/utils'
 import { supabase } from '@/lib/supabase'
 import { MenuItem } from '@/types'
 
-type MenuTab = 'rice' | 'protein' | 'addons'
+type MenuTab = 'rice' | 'protein' | 'addons' | 'dessert'
 
 interface FormData {
   name: string
@@ -37,6 +38,7 @@ export default function MenuPage() {
   const [riceItems, setRiceItems] = useState<MenuItem[]>([])
   const [proteinItems, setProteinItems] = useState<MenuItem[]>([])
   const [addonItems, setAddonItems] = useState<MenuItem[]>([])
+  const [dessertItems, setDessertItems] = useState<MenuItem[]>([])
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
   const [editingItem, setEditingItem] = useState<MenuItem | null>(null)
@@ -53,12 +55,21 @@ export default function MenuPage() {
     rice: 'menu_rice',
     protein: 'menu_protein',
     addons: 'menu_addons',
+    dessert: 'menu_dessert',
+  }[activeTab]
+
+  const defaultUnit = {
+    rice: 'porsi',
+    protein: 'porsi',
+    addons: 'porsi',
+    dessert: 'pack',
   }[activeTab]
 
   const tabs = [
     { id: 'rice' as MenuTab, label: 'Nasi', icon: UtensilsCrossed, data: riceItems },
     { id: 'protein' as MenuTab, label: 'Protein', icon: Drumstick, data: proteinItems },
     { id: 'addons' as MenuTab, label: 'Lauk', icon: Cookie, data: addonItems },
+    { id: 'dessert' as MenuTab, label: 'Kue/Dessert', icon: Cake, data: dessertItems },
   ]
 
   useEffect(() => {
@@ -68,15 +79,17 @@ export default function MenuPage() {
   async function fetchAll() {
     setLoading(true)
     try {
-      const [rice, protein, addons] = await Promise.all([
+      const [rice, protein, addons, dessert] = await Promise.all([
         supabase.from('menu_rice').select('*').order('name'),
         supabase.from('menu_protein').select('*').order('name'),
         supabase.from('menu_addons').select('*').order('name'),
+        supabase.from('menu_dessert').select('*').order('name'),
       ])
 
       if (rice.data) setRiceItems(rice.data)
       if (protein.data) setProteinItems(protein.data)
       if (addons.data) setAddonItems(addons.data)
+      if (dessert.data) setDessertItems(dessert.data)
     } catch (err) {
       console.error('Error fetching menu:', err)
     } finally {
@@ -86,7 +99,7 @@ export default function MenuPage() {
 
   function openAdd() {
     setEditingItem(null)
-    setFormData({ name: '', description: '', price: '', stock_qty: '', unit: 'porsi' })
+    setFormData({ name: '', description: '', price: '', stock_qty: '', unit: defaultUnit })
     setShowModal(true)
   }
 
@@ -97,7 +110,7 @@ export default function MenuPage() {
       description: item.description || '',
       price: item.price.toString(),
       stock_qty: item.stock_qty.toString(),
-      unit: item.unit || 'porsi',
+      unit: item.unit || defaultUnit,
     })
     setShowModal(true)
   }
@@ -120,19 +133,15 @@ export default function MenuPage() {
       }
 
       if (editingItem) {
-        // Update
         const { error } = await supabase
           .from(tableName)
           .update(payload)
           .eq('id', editingItem.id)
-
         if (error) throw error
       } else {
-        // Insert
         const { error } = await supabase
           .from(tableName)
           .insert(payload)
-
         if (error) throw error
       }
 
@@ -153,7 +162,6 @@ export default function MenuPage() {
         .from(tableName)
         .delete()
         .eq('id', item.id)
-
       if (error) throw error
       await fetchAll()
     } catch (err: any) {
@@ -167,7 +175,6 @@ export default function MenuPage() {
         .from(tableName)
         .update({ is_active: !item.is_active })
         .eq('id', item.id)
-
       if (error) throw error
       await fetchAll()
     } catch (err: any) {
@@ -175,8 +182,8 @@ export default function MenuPage() {
     }
   }
 
-  const currentTab = tabs.find((t) => t.id === activeTab)!
-  const filteredData = currentTab.data.filter((item) =>
+  const currentTab = tabs.find(t => t.id === activeTab)!
+  const filteredData = currentTab.data.filter(item =>
     item.name.toLowerCase().includes(searchQuery.toLowerCase())
   )
 
@@ -194,9 +201,7 @@ export default function MenuPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">Menu Management</h1>
-          <p className="text-muted-foreground">
-            Kelola menu nasi, protein, dan lauk pelengkap
-          </p>
+          <p className="text-muted-foreground">Kelola menu nasi, protein, lauk, dan kue</p>
         </div>
         <Button onClick={openAdd}>
           <Plus className="mr-2 h-4 w-4" />
@@ -205,12 +210,12 @@ export default function MenuPage() {
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-2 border-b border-border">
-        {tabs.map((tab) => (
+      <div className="flex gap-2 border-b border-border overflow-x-auto">
+        {tabs.map(tab => (
           <button
             key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
-            className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+            onClick={() => { setActiveTab(tab.id); setSearchQuery('') }}
+            className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
               activeTab === tab.id
                 ? 'border-primary text-primary'
                 : 'border-transparent text-muted-foreground hover:text-foreground'
@@ -218,9 +223,7 @@ export default function MenuPage() {
           >
             <tab.icon className="h-4 w-4" />
             {tab.label}
-            <Badge variant="secondary" className="ml-1">
-              {tab.data.length}
-            </Badge>
+            <Badge variant="secondary" className="ml-1">{tab.data.length}</Badge>
           </button>
         ))}
       </div>
@@ -238,7 +241,7 @@ export default function MenuPage() {
 
       {/* Menu Grid */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {filteredData.map((item) => (
+        {filteredData.map(item => (
           <Card key={item.id}>
             <CardContent className="p-4">
               <div className="flex items-start justify-between">
@@ -253,48 +256,24 @@ export default function MenuPage() {
                       {item.is_active ? 'Aktif' : 'Nonaktif'}
                     </Badge>
                   </div>
-                  <p className="mt-1 text-lg font-bold text-primary">
-                    {formatIDR(item.price)}
-                  </p>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    Stok: {item.stock_qty} {item.unit || 'porsi'}
-                  </p>
-                  {item.description && (
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      {item.description}
-                    </p>
-                  )}
+                  <p className="mt-1 text-lg font-bold text-primary">{formatIDR(item.price)}</p>
+                  <p className="mt-1 text-sm text-muted-foreground">Stok: {item.stock_qty} {item.unit || 'porsi'}</p>
+                  {item.description && <p className="mt-1 text-xs text-muted-foreground">{item.description}</p>}
                 </div>
                 <div className="flex gap-1">
-                  <button
-                    className="rounded-lg p-1.5 hover:bg-muted transition-colors"
-                    onClick={() => openEdit(item)}
-                  >
+                  <button className="rounded-lg p-1.5 hover:bg-muted transition-colors" onClick={() => openEdit(item)}>
                     <Edit2 className="h-4 w-4 text-muted-foreground" />
                   </button>
-                  <button
-                    className="rounded-lg p-1.5 hover:bg-destructive/10 transition-colors"
-                    onClick={() => handleDelete(item)}
-                  >
+                  <button className="rounded-lg p-1.5 hover:bg-destructive/10 transition-colors" onClick={() => handleDelete(item)}>
                     <Trash2 className="h-4 w-4 text-destructive" />
                   </button>
                 </div>
               </div>
-
-              {/* Stock bar */}
               <div className="mt-3">
                 <div className="h-1.5 w-full rounded-full bg-muted">
                   <div
-                    className={`h-1.5 rounded-full ${
-                      item.stock_qty < 20
-                        ? 'bg-warning'
-                        : item.stock_qty < 50
-                        ? 'bg-info'
-                        : 'bg-success'
-                    }`}
-                    style={{
-                      width: `${Math.min((item.stock_qty / 100) * 100, 100)}%`,
-                    }}
+                    className={`h-1.5 rounded-full ${item.stock_qty < 20 ? 'bg-warning' : item.stock_qty < 50 ? 'bg-info' : 'bg-success'}`}
+                    style={{ width: `${Math.min((item.stock_qty / 100) * 100, 100)}%` }}
                   />
                 </div>
               </div>
@@ -302,19 +281,12 @@ export default function MenuPage() {
           </Card>
         ))}
 
-        {/* Add new card */}
-        <Card
-          className="border-dashed hover:border-primary/50 transition-colors cursor-pointer"
-          onClick={openAdd}
-        >
+        <Card className="border-dashed hover:border-primary/50 transition-colors cursor-pointer" onClick={openAdd}>
           <CardContent className="flex flex-col items-center justify-center p-8 text-center">
             <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
               <Plus className="h-6 w-6 text-primary" />
             </div>
             <p className="font-medium">Tambah {currentTab.label}</p>
-            <p className="text-sm text-muted-foreground mt-1">
-              Klik untuk menambah menu baru
-            </p>
           </CardContent>
         </Card>
       </div>
@@ -324,13 +296,8 @@ export default function MenuPage() {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <Card className="w-full max-w-md">
             <CardHeader className="flex flex-row items-center justify-between space-y-0">
-              <CardTitle>
-                {editingItem ? 'Edit Menu' : 'Tambah Menu'}
-              </CardTitle>
-              <button
-                onClick={() => setShowModal(false)}
-                className="rounded-lg p-1.5 hover:bg-muted transition-colors"
-              >
+              <CardTitle>{editingItem ? 'Edit Menu' : 'Tambah Menu'}</CardTitle>
+              <button onClick={() => setShowModal(false)} className="rounded-lg p-1.5 hover:bg-muted transition-colors">
                 <X className="h-4 w-4" />
               </button>
             </CardHeader>
@@ -339,57 +306,37 @@ export default function MenuPage() {
                 label="Nama Menu *"
                 placeholder="Nama menu"
                 value={formData.name}
-                onChange={(e) =>
-                  setFormData({ ...formData, name: e.target.value })
-                }
+                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
               />
               <Input
                 label="Deskripsi"
                 placeholder="Deskripsi singkat"
                 value={formData.description}
-                onChange={(e) =>
-                  setFormData({ ...formData, description: e.target.value })
-                }
+                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
               />
               <Input
                 label="Harga (Rp) *"
                 type="number"
                 placeholder="10000"
                 value={formData.price}
-                onChange={(e) =>
-                  setFormData({ ...formData, price: e.target.value })
-                }
+                onChange={(e) => setFormData({ ...formData, price: e.target.value })}
               />
               <Input
                 label="Stok"
                 type="number"
                 placeholder="0"
                 value={formData.stock_qty}
-                onChange={(e) =>
-                  setFormData({ ...formData, stock_qty: e.target.value })
-                }
+                onChange={(e) => setFormData({ ...formData, stock_qty: e.target.value })}
               />
               <Input
                 label="Satuan"
-                placeholder="porsi"
+                placeholder={defaultUnit}
                 value={formData.unit}
-                onChange={(e) =>
-                  setFormData({ ...formData, unit: e.target.value })
-                }
+                onChange={(e) => setFormData({ ...formData, unit: e.target.value })}
               />
               <div className="flex gap-3 pt-2">
-                <Button
-                  variant="outline"
-                  className="flex-1"
-                  onClick={() => setShowModal(false)}
-                >
-                  Batal
-                </Button>
-                <Button
-                  className="flex-1"
-                  onClick={handleSave}
-                  loading={saving}
-                >
+                <Button variant="outline" className="flex-1" onClick={() => setShowModal(false)}>Batal</Button>
+                <Button className="flex-1" onClick={handleSave} loading={saving}>
                   <Save className="mr-2 h-4 w-4" />
                   Simpan
                 </Button>

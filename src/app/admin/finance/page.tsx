@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import {
   DollarSign,
   TrendingUp,
@@ -10,9 +11,11 @@ import {
   CreditCard,
   ArrowUpRight,
   Loader2,
+  Download,
 } from 'lucide-react'
 import { formatIDR, formatDateShort } from '@/lib/utils'
 import { supabase } from '@/lib/supabase'
+import { exportToCSV, formatOrdersForExport } from '@/lib/export-csv'
 
 export default function FinancePage() {
   const [stats, setStats] = useState({
@@ -22,6 +25,7 @@ export default function FinancePage() {
     dpCollected: 0,
     remainingPending: 0,
   })
+  const [allOrders, setAllOrders] = useState<any[]>([])
   const [recentPayments, setRecentPayments] = useState<any[]>([])
   const [outstandingPayments, setOutstandingPayments] = useState<any[]>([])
   const [revenueByDate, setRevenueByDate] = useState<{ date: string; revenue: number }[]>([])
@@ -42,6 +46,8 @@ export default function FinancePage() {
         .order('created_at', { ascending: false })
 
       if (!orders) return
+
+      setAllOrders(orders)
 
       // Calculate stats
       const totalRevenue = orders.reduce((sum, o) => sum + (o.grand_total || 0), 0)
@@ -131,9 +137,18 @@ export default function FinancePage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold">Keuangan</h1>
-        <p className="text-muted-foreground">Laporan pendapatan dan pembayaran</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold">Keuangan</h1>
+          <p className="text-muted-foreground">Laporan pendapatan dan pembayaran</p>
+        </div>
+        <Button
+          variant="outline"
+          onClick={() => exportToCSV(formatOrdersForExport(allOrders), 'laporan_pesanan')}
+        >
+          <Download className="mr-2 h-4 w-4" />
+          Export CSV
+        </Button>
       </div>
 
       {/* Stats */}

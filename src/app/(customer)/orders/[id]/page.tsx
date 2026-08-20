@@ -20,6 +20,7 @@ import {
 import { formatIDR, formatDate, formatDateShort, canCancelOrder } from '@/lib/utils'
 import { useAuth } from '@/context/auth-context'
 import { supabase } from '@/lib/supabase'
+import { ReviewForm } from '@/components/review-form'
 import Link from 'next/link'
 
 const statusConfig: Record<string, { label: string; variant: 'warning' | 'info' | 'success' | 'destructive' }> = {
@@ -339,6 +340,11 @@ export default function OrderDetailPage() {
             </CardContent>
           </Card>
         </div>
+
+        {/* Review Form for completed orders */}
+        {order.status === 'done' && user && (
+          <ReviewForm orderId={order.id} userId={user.id} />
+        )}
       </div>
     </div>
   )
