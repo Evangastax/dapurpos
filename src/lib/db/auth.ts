@@ -105,24 +105,9 @@ export async function isAdmin(userId: string): Promise<boolean> {
 }
 
 // Admin login with username/password
-export async function adminLogin(username: string, password: string): Promise<User | null> {
-  // For demo: admin/admin123
+export async function adminLogin(username: string, password: string): Promise<User> {
+  // Hardcoded admin for now
   if (username === 'admin' && password === 'admin123') {
-    // Try to get from database
-    const { data, error } = await supabase
-      .from('users')
-      .select('*')
-      .eq('role', 'admin')
-      .limit(1)
-      .single()
-
-    // If found in DB, use it
-    if (data && !error) {
-      localStorage.setItem('dapurpos_user', JSON.stringify(data))
-      return data
-    }
-
-    // Fallback: create admin user object if not in DB
     const adminUser: User = {
       id: '00000000-0000-0000-0000-000000000001',
       name: 'Admin',
@@ -132,7 +117,9 @@ export async function adminLogin(username: string, password: string): Promise<Us
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     }
-    localStorage.setItem('dapurpos_user', JSON.stringify(adminUser))
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('dapurpos_user', JSON.stringify(adminUser))
+    }
     return adminUser
   }
   throw new Error('Username atau password salah')
